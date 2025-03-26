@@ -1,0 +1,16 @@
+const CTM = require("./CTM_Y.Router")
+const package = require("./Package_Y.Router")
+const service = require("./Service.Router")
+const PK_CTM = require("./CTM_PK_Y.Router")
+const SV_CTM = require("./CTM_Service_Y.Router")
+const Authen = require("./Authen_Y.router")
+const Authentication = require("../middleware/Authentication_Y")
+module.exports = ((app) => {
+    const system = "/api/v1"
+    app.use(system + "/CTM",Authentication,CTM) 
+    app.use(system + "/package",Authentication,package)
+    app.use(system + "/Service",Authentication, service)
+    app.use(system + "/PK_CTM",Authentication,PK_CTM)
+    app.use(system + "/SV_CTM",Authentication,SV_CTM)
+    app.use(system + "/Authen",Authen)
+})
