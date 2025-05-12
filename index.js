@@ -9,11 +9,12 @@ dotenv.config()
 database.connect()
 
 const app = express()
-const port = process.env.port
+const port = process.env.PORT
+const frontendUrl = process.env.FRONTEND_URL
 
 
 app.use(express.json());
-const allowedOrigins = ["http://localhost:3000"]; 
+const allowedOrigins = [frontendUrl];
 app.use(cors({
     origin: function (origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
@@ -28,5 +29,5 @@ app.use(cookieParser());
 routerV1(app)
 
 app.listen(port,() => {
-    console.log("ok ok")
+    console.log("listening on port ", port)
 })
