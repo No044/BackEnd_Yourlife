@@ -43,4 +43,5 @@ jobs:
             cd /home/${{ secrets.EC2_USER }}/app
             docker-compose pull backend
             docker-compose up -d --remove-orphans backend
+            docker image prune -a -f
           EOF
