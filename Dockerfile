@@ -1,4 +1,4 @@
-FROM node:22 AS builder
+FROM node:22 AS build
 
 WORKDIR /app
 
@@ -8,4 +8,10 @@ RUN npm install --production
 
 COPY . .
 
-CMD ["npm", "run", "build"]
+FROM node:alpine
+
+WORKDIR /app
+
+COPY --from=build /app .
+
+CMD ["node", "index.js"]
