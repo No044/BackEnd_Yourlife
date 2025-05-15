@@ -14,10 +14,10 @@ const frontendUrl = process.env.FRONTEND_URL;
 console.log("frontendUrl", frontendUrl);
 
 app.use(express.json());
-// const allowedOrigins = [frontendUrl];
+const allowedOrigins = [frontendUrl];
 app.use(
   cors({
-    origin: "*",
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type"],
     credentials: true,
