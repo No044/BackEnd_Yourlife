@@ -2,6 +2,7 @@ const CTM_PK = require("../model/CTM_PK_Y.model")
 const CTM = require("../model/Customer_Y.model")
 const custormer = require("../model/Customer_Y.model")
 const package = require("../model/Package_Y.model")
+const History = require("../model/History_Y.model")
 const helper = require("../../../helper/helper")
 const mongoose = require("mongoose");
 
@@ -17,7 +18,6 @@ module.exports.GetALL = async (req, res) => {
         }
         const { id, type, key, status } = req.query
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-
             return res.json({
                 status: false,
                 type: "Data",
@@ -27,7 +27,6 @@ module.exports.GetALL = async (req, res) => {
         }
         let Data = null
         const find = {
-
         }
         if (status && status != "0" && status != "null") {
             find.status = status
@@ -46,6 +45,7 @@ module.exports.GetALL = async (req, res) => {
                 .populate("Package_id")
                 .lean();
         } else if (type == "ctmpk") {
+            console.log("dã chạy vào đây")
             find.CTM_id = id
             if (key && key != "null") {
                 const regex = new RegExp(key, "i")
@@ -58,9 +58,9 @@ module.exports.GetALL = async (req, res) => {
                 .populate("CTM_id")
                 .populate("Package_id")
                 .lean();
+            console.log(Data)
         }
         else {
-            
             return res.json({
                 status: false,
                 type: "Data",
@@ -75,8 +75,8 @@ module.exports.GetALL = async (req, res) => {
             totalpay: 0,
             totalunpay: 0,
             total: 0
-
         }
+
         for (let item of Data) {
             switch (item.status) {
                 case 1:
@@ -134,6 +134,8 @@ module.exports.Post = async (req, res) => {
                 data: null
             })
         }
+
+
         const newobject = {
             CTM_id: id_user,
             Package_id: id_pack,
@@ -145,7 +147,8 @@ module.exports.Post = async (req, res) => {
         }
 
         const user = await custormer.findOne({
-            _id: id_user
+            _id: id_user,
+            deleted: false
         })
         if (!user) {
             return res.json({
@@ -157,7 +160,8 @@ module.exports.Post = async (req, res) => {
         }
         const pack = await package.findOne({
             _id: id_pack,
-            status: 1
+            status: 1,
+            deleted: false
         })
         if (!pack) {
             return res.json({
@@ -167,12 +171,15 @@ module.exports.Post = async (req, res) => {
                 data: null
             })
         }
-        user.totalDay = parseInt(user.totalDay) + parseInt(pack.Duration)
+
+
+        user.totalDay = user.totalDay + parseInt(pack.Duration)
         if (user.startday == null && user.Status != "3") {
             user.startday = Date.now()
             user.Status = 1
         }
         await user.save()
+
         const handle = new CTM_PK(newobject)
         await handle.save()
         const content = `
@@ -266,6 +273,27 @@ module.exports.Post = async (req, res) => {
 </table>
     `;
         helper.SendMail(user.Email, "Hóa Đơn", content)
+
+
+        const history = new History(
+            {
+                authen_id: req.user.userId,
+                id_type: handle._id,
+                action: "Thêm Gói Tập",
+                type: "Đăng Ký Gói Tập",
+                detailtype: {
+                    field_1: pack.Name,
+                    field_2: user.FullName
+                },
+                revenue: pack.Price,
+                datesearch: helper.YearNow(),
+                createAt: helper.timenow(),
+                CreateBy: req.user.email,
+            }
+        )
+        await history.save()
+
+
         return res.json({
             status: true,
             type: "CTM_PK",
@@ -293,6 +321,7 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
+
         const { id } = req.body
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.json({
@@ -302,10 +331,12 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
-        const  Data = await CTM_PK.findOne({_id : id})
-        .populate("CTM_id")
-        .populate("Package_id")
-        if(!Data){
+
+        const Data = await CTM_PK.findOne({ _id: id, deleted: false , status : 1})
+            .populate("CTM_id")
+            .populate("Package_id")
+
+        if (!Data) {
             return res.json({
                 status: false,
                 type: "Data",
@@ -313,41 +344,66 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
-   
+
         const Responduser = await CTM.updateOne({
-            _id : Data.CTM_id._id
-        },  { $inc: { totalDay: -Data.Package_id.Duration }})
+            _id: Data.CTM_id._id,
+            deleted: false
+        }, { $inc: { totalDay: -Data.Package_id.Duration } })
+
         const Respond = await CTM_PK.updateOne(
-            { _id: id},
-            { 
-                $set: { 
-                    status: 2, 
-                    updateBy: req.user.email, 
+            { _id: id, deleted: false },
+            {
+                $set: {
+                    status: 2,
+                    updateBy: req.user.email,
                     updateAt: helper.timenow(),
-                    deleted: true 
-                } 
+                    deleted: true
+                }
             }
         );
-        if (Respond.modifiedCount === 0 ||  Responduser === 0) {
+
+
+        if (Respond.modifiedCount === 0 || Responduser === 0) {
             return res.json({
                 status: false,
                 type: "Data",
                 error: 300,
                 data: null
             })
-        }        
-  
+        }
+
+
+        const history = new History(
+            {
+                authen_id: req.user.userId,
+                id_type: Data._id,
+                action: "Hủy Gói Tập",
+                type: "Đăng Ký Gói Tập",
+                detailtype: {
+                    field_1: Data.Package_id.Name,
+                    field_2: Data.CTM_id.FullName
+                },
+                status : 2,
+                revenue: Data.Package_id.Price,
+                datesearch: helper.YearNow(),
+                createAt: helper.timenow(),
+                CreateBy: req.user.email,
+            }
+        )
+        await history.save()
         return res.json({
             status: true,
             type: "CTM_SV",
             error: null,
             data: null
         })
+
     } catch (error) {
-    } return res.json({
-        status: false,
-        type: "CTM_SV",
-        error: 500,
-        data: null
-    })
+        return res.json({
+            status: false,
+            type: "CTM_SV",
+            error: 500,
+            data: null
+        })
+    }
 }

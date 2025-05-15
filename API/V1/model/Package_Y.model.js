@@ -1,9 +1,18 @@
 const mongoose = require("mongoose")
 
 const PackageSchema = new mongoose.Schema({
-    Name : String,
-    Price : Number,
-    Duration : Number,
+    Name : {
+        type: String,
+        required: true
+    },
+    Price : {
+        type: Number,
+        required: true
+    },
+    Duration :  {
+        type: Number,
+        required: true
+    },
     status : Number,
     deleted : {
         type : Boolean,

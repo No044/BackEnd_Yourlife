@@ -1,13 +1,22 @@
 const mongoose = require("mongoose")
 
 const CustomerSchema = new mongoose.Schema({
-    FullName : String,
-    Email : String,
+    FullName: {
+        type: String,
+        required: true
+    },
+    Email: {
+        type: String,
+        },
     Phone_number : String,
     Status : Number,
     date_reserve : {
         type : String,
         default : null
+    },
+    id_fingerprint : {
+        type : String,
+        unique : true,
     },
     deleted : Boolean,
     Description : String,

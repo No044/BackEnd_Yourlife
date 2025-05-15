@@ -1,5 +1,6 @@
 const service = require("../model/Service_Y.model")
 const mongoose = require("mongoose");
+const History = require("../model/History_Y.model")
 const CTM_SV = require("../model/CTM_SV_Y.model")
 const helper = require("../../../helper/helper")
 const validate = require("../middleware/validate_Y")
@@ -70,6 +71,24 @@ module.exports.Post = async (req, res) => {
     }
     const newdata = new service(newobject)
     await newdata.save()
+
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: newdata.id,
+        action: "Thêm Dịch Vụ",
+        type: "Dịch Vụ",
+        detailtype: {
+          field_1 : newdata.Name
+        },
+        datesearch : helper.YearNow(),
+        revenue: 0,
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+
     return res.json({
       status: true,
       type: "service",
@@ -90,7 +109,6 @@ module.exports.Post = async (req, res) => {
 
 module.exports.patch = async(req,res) => {
   try {
-
     if(req.user.permission.includes("edit_service") == false && req.user.role != "admin"){
       return res.json( {
         status: false,
@@ -125,7 +143,6 @@ module.exports.patch = async(req,res) => {
     })
 
     if (!existingService) {
-
       return res.json( {
         status: false,
         type: "Data",
@@ -137,7 +154,7 @@ module.exports.patch = async(req,res) => {
       return res.json({
         status: false,
         type: "Data",
-        error: 700,
+        error: 300,
         data: null
       })
     }
@@ -169,6 +186,23 @@ module.exports.patch = async(req,res) => {
           data: null
       })
       }
+      const history = new History(
+        {
+          authen_id: req.user.userId,
+          id_type: req.body.id,
+          action: "Chỉnh Sửa Dịch Vụ",
+          type: "Dịch Vụ",
+          detailtype: {
+            field_1 : NewObject.Name
+          },
+          datesearch : helper.YearNow(),
+          revenue: 0,
+          createAt: helper.timenow(),
+          CreateBy: req.user.email,
+        }
+      )
+      await history.save()
+
       return res.json({
         status: true,
         type: "service",
@@ -176,6 +210,7 @@ module.exports.patch = async(req,res) => {
         data: null
       })
     } catch (error) {
+      console.log(error)
       return res.json({
         status: false,
         type: "service",
@@ -266,14 +301,110 @@ module.exports.changeStatus = async (req, res) => {
     }
     return res.json({
       status: true,
-      type: "package",
+      type: "service",
       error: null,
       data: null
     })
   } catch (error) {
     return res.json({
       status: false,
-      type: "package",
+      type: "service",
+      error: 500,
+      data: null
+    })
+  }
+}
+
+
+
+module.exports.deleted = async(req,res) => {
+  try {
+    if (req.user.permission.includes("delete_service") == false && req.user.role != "admin") {
+      return res.json({
+        status: false,
+        type: "Auth",
+        error: 100,
+        data: null
+      })
+    }
+    const {id} = req.body
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const checkctmsv = await CTM_SV.findOne({
+      Service_id : id,
+      deleted : false
+    })
+    if(checkctmsv){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+
+    const checkService = await service.findOne({
+      _id : id
+    })
+    if(!checkService){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const respond = await service.updateOne({
+      _id : id,
+      deleted : false
+    },{$set : {deleted : true}})
+
+    if (respond.modifiedCount === 0) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: id,
+        action: "Xóa Dịch Vụ",
+        type: "Dịch Vụ",
+        detailtype: {
+          field_1 : checkService.Name
+        },
+        datesearch : helper.YearNow(),
+        revenue: 0,
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+
+    return res.json({
+      status: true,
+      type: "service",
+      error: null,
+      data: null
+    })
+  } catch (error) {
+    console.log(error)
+    return res.json({
+      status: false,
+      type: "service",
       error: 500,
       data: null
     })

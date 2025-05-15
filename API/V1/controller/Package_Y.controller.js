@@ -1,11 +1,13 @@
 const Package = require("../model/Package_Y.model")
 const mongoose = require("mongoose");
 const CTM_Package = require("../model/CTM_PK_Y.model")
+const History = require("../model/History_Y.model")
 const helper = require("../../../helper/helper")
 const validate = require("../middleware/validate_Y");
 
 module.exports.GetALL = async (req, res) => {
   try {
+
     const { key, status } = req.query
     const find = {
       deleted: false
@@ -72,6 +74,26 @@ module.exports.Post = async (req, res) => {
     }
     const newdata = new Package(newobject)
     await newdata.save()
+
+
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: newdata._id,
+        action: "Thêm Gói Tập",
+        type: "Gói Tập",
+        detailtype: {
+          field_1 : newobject.Name
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+
+    
     return res.json({
       status: true,
       type: "Package",
@@ -79,6 +101,15 @@ module.exports.Post = async (req, res) => {
       data: null
     })
   } catch (error) {
+    console.log(error)
+    if(error.name == "MongoServerError"){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
     return res.json({
       status: false,
       type: "Package",
@@ -109,7 +140,8 @@ module.exports.changeStatus = async (req, res) => {
       })
     }
     const respond = await Package.updateOne({
-      _id: id
+      _id: id,
+      deleted : false
     }, { $set: { status: status } })
 
 
@@ -139,7 +171,14 @@ module.exports.changeStatus = async (req, res) => {
 
 module.exports.Getdetail = async (req, res) => {
   try {
-
+    if (req.user.permission.includes("edit_package") == false && req.user.role != "admin") {
+      return res.json({
+        status: false,
+        type: "Auth",
+        error: 100,
+        data: null
+      })
+    }
     const { id } = req.params
       if (!id || !mongoose.Types.ObjectId.isValid(id)) {
           return res.json( {
@@ -150,7 +189,8 @@ module.exports.Getdetail = async (req, res) => {
         })
         }
     const Data = await Package.findOne({
-      _id: id
+      _id: id,
+      deleted : false
     })
     if (!Data) {
       return res.json( {
@@ -208,8 +248,10 @@ module.exports.patch = async (req, res) => {
       Package_id : req.body.id,
       deleted : false
     })
+
     const Datapackage = await Package.findOne({
-      _id : req.body.id
+      _id : req.body.id,
+      deleted : false
     })
     if(!Datapackage){
       return res.json({
@@ -223,7 +265,7 @@ module.exports.patch = async (req, res) => {
       return res.json({
         status: false,
         type: "Data",
-        error: 700,
+        error: 300,
         data: null
       })
     }
@@ -235,9 +277,13 @@ module.exports.patch = async (req, res) => {
       updateAt: req.user.email,
       updateBy: helper.timenow()
     }
+
     const respond = await Package.updateOne({
-      _id: req.body.id
+      _id: req.body.id,
+      deleted : false
     }, { $set: NewObject })
+
+
     if (respond.modifiedCount === 0) {
       return res.json( {
         status: false,
@@ -246,6 +292,24 @@ module.exports.patch = async (req, res) => {
         data: null
     })
     }
+
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: req.body.id,
+        action: "Chỉnh Sửa Gói Tập",
+        type: "Gói Tập",
+        detailtype: {
+          field_1 : NewObject.Name
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+    
     return res.json({
       status: true,
       type: "package",
@@ -253,6 +317,15 @@ module.exports.patch = async (req, res) => {
       data: null
     })
   } catch (error) {
+    console.log(error)
+    if(error.name == "MongoServerError"){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
     return res.json({
       status: false,
       type: "package",
@@ -261,4 +334,104 @@ module.exports.patch = async (req, res) => {
     })
   }
 
+}
+
+
+module.exports.deleted = async(req,res) => {
+  try {
+    if (req.user.permission.includes("deleted_package") == false && req.user.role != "admin") {
+      return res.json({
+        status: false,
+        type: "Auth",
+        error: 100,
+        data: null
+      })
+    }
+    const {id} = req.body
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    
+    }
+
+
+    const checkctmpk = await CTM_Package.findOne({
+       Package_id : id,
+       deleted : false
+    })
+    if(checkctmpk){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const checkpack = await Package.findOne({
+      _id : id,
+      deleted : false
+    })
+
+    if(!checkpack){
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+
+    const respond = await Package.updateOne({
+      _id : id,
+      deleted : false
+    },{$set : {deleted : true}})
+
+    if (respond.modifiedCount === 0) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: id,
+        action: "Xóa Gói Tập",
+        type: "Gói Tập",
+        detailtype: {
+          field_1 : checkpack.Name
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+
+
+    return res.json({
+      status: true,
+      type: "package",
+      error: null,
+      data: null
+    })
+  } catch (error) {
+
+    return res.json({
+      status: false,
+      type: "package",
+      error: 500,
+      data: null
+    })
+  }
 }

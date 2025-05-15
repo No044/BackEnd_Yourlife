@@ -1,12 +1,17 @@
 const mongoose = require("mongoose")
 
 const Authenschenma = new mongoose.Schema({
-    Email : String,
-    password : String,
-    status : String,
-    deleted : String,
+    Email : {
+        type: String,
+        required: true
+    },
+    password : {
+        type: String,
+        required: true
+    },
+    status : Number,
+    deleted : Boolean,
     role : String,
-    permission : Array,
     CreateAT : String,
     CreateBy : String,
     UpdateAT : String,

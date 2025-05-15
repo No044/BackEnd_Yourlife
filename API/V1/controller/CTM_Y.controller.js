@@ -1,93 +1,69 @@
+const mongoose = require("mongoose");
+const ZKLib = require("node-zklib");
 const Customer = require("../model/Customer_Y.model")
 const package = require("../model/Package_Y.model")
 const CTM_PK = require("../model/CTM_PK_Y.model")
+const CTM_SV = require("../model/CTM_SV_Y.model")
+const History = require("../model/History_Y.model")
 const helper = require("../../../helper/helper")
 const validate = require("../middleware/validate_Y")
-const mongoose = require("mongoose");
 module.exports.GetALL = async (req, res) => {
   try {
-    if (!req.user?.permission?.includes("view_customer") && req.user.role !== "admin"){
+    if (!req.user?.permission?.includes("view_customer") && req.user.role !== "admin") {
       return res.json({
         status: false,
         type: "Auth",
         error: 100,
         data: null
-      })
-    }
-    const { key, status } = req.query
-    const find = {
-      deleted: false
-    }
-    if (key && key != "null") {
-      const regex = new RegExp(key, "i")
-      find.FullName = regex
-    }
-    if (status && status != "0" && status != 4 && status != "null") {
-      find.Status = status
-    }
-
-    let Data = []
-    if (status == 4) {
-      delete find.FullName;
-      find.Status = "1"
-      find.totalDay = { $lte: 5 };
-      Data = await Customer.find(find)
-    } else {
-      Data = await Customer.find(find)
-
-    }
-
-    const bulkOps = [];
-
-    for (let item of Data) {
-      if (item.startday != null && item.Status == "1") {
-        const startDate = new Date(Number(item.startday));
-        const now = new Date();
-        const diffDays = (now - startDate) / (1000 * 60 * 60 * 24);
-          item.totalDay = item.totalDay - diffDays
-          item.startday = Date.now()
-       
-
-      }
-      if (item.totalDay <= 0) {
-        item.Status = "2"
-        item.totalDay = 0
-        item.startday = null
-      }
-      bulkOps.push({
-        updateOne: {
-          filter: { _id: item._id },
-          update: {
-            $set: {
-              totalDay: item.totalDay,
-              startday: item.startday,
-              Status: item.Status,
-            },
-          },
-        },
       });
     }
-    if (bulkOps.length > 0) {
-      await Customer.bulkWrite(bulkOps);
+    const { key, status, page } = req.query;
+    const find = { deleted: false };
+
+    if (key && key !== "null") {
+      const regex = new RegExp(key, "i");
+      find.FullName = regex;
     }
+
+    if (status && status !== "0" && status !== 4 && status !== "null") {
+      find.Status = status;
+    }
+
+    let Data = [];
+    let pagination;
+
+    if (status == 4) {
+      delete find.FullName;
+      find.Status = "1";
+      find.totalDay = { $lte: 5 };
+      const total = await Customer.countDocuments(find);
+      pagination = helper.paginet(page, 8, total);
+      Data = await Customer.find(find).skip(pagination.skip).limit(pagination.limit);
+    } else {
+      const total = await Customer.countDocuments(find);
+      pagination = helper.paginet(page, 8, total);
+      Data = await Customer.find(find).skip(pagination.skip).limit(pagination.limit);
+    }
+
+
     return res.json({
       status: true,
       type: "Customer",
       error: null,
-      data: Data
-    })
+      data: Data,
+      total: pagination.count,
+    });
 
   } catch (error) {
+    console.error('Server error:', error);
     return res.json({
       status: false,
       type: "Customer",
       error: 500,
       data: null
-
-    })
+    });
   }
-}
-
+};
 module.exports.GetDetail = async (req, res) => {
   try {
     const { id } = req.params
@@ -101,7 +77,7 @@ module.exports.GetDetail = async (req, res) => {
     }
     let Data = null
     if (req.user.permission.includes("detail_customer") == false && req.user.role != "admin") {
-      Data = await Customer.findOne({ _id: id }).select("FullName Email Phone_number Description");
+      Data = await Customer.findOne({ _id: id, deleted: false }).select("FullName Email Phone_number Description");
       if (!Data) {
         return res.json({
           status: false,
@@ -117,7 +93,7 @@ module.exports.GetDetail = async (req, res) => {
         data: Data
       })
     }
-    Data = await Customer.findOne({ _id: id });
+    Data = await Customer.findOne({ _id: id, deleted: false });
     if (!Data) {
       return res.json({
         status: false,
@@ -179,7 +155,8 @@ module.exports.patch = async (req, res) => {
       updateBy: helper.timenow()
     }
     const respond = await Customer.updateOne({
-      _id: req.body.Id
+      _id: req.body.Id,
+      deleted: false
     }, { $set: NewObject })
 
 
@@ -191,6 +168,23 @@ module.exports.patch = async (req, res) => {
         data: null
       })
     }
+    const history = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: req.body.Id,
+        action: "Chỉnh Sửa Khách Hàng",
+        type: "Khách Hàng",
+        detailtype: {
+          field_1 : NewObject.FullName
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await history.save()
+
     return res.json({
       status: true,
       type: "Customer",
@@ -198,6 +192,14 @@ module.exports.patch = async (req, res) => {
       data: null
     })
   } catch (error) {
+    if (error.name == "MongoServerError") {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
     return res.json({
       status: false,
       type: "Customer",
@@ -218,30 +220,51 @@ module.exports.Post = async (req, res) => {
         data: null
       })
     }
-    const requiredFields = ["FullName", "Email", "PhoneNumBer", "Description","Status","Package_id"];
-    const respondvalidate = validate.isValidRequest(req.body, requiredFields)
-    if(respondvalidate == false){
-      return res.json( {
+
+    const zk = new ZKLib("192.168.1.201", 4370, 10000, 4000);
+    await zk.createSocket();
+    const users = await zk.getUsers();
+    const check_id_fingerprint = users.data.some(
+      user => user.userId === req.body.id_fingerprint
+    );
+
+    if (!check_id_fingerprint) {
+      return res.json({
         status: false,
         type: "Data",
         error: 300,
         data: null
-    })
-   }
-    if (!req.body.Package_id || !mongoose.Types.ObjectId.isValid(req.body.Package_id)) {
-      return res.json( {
-        status: false,
-        type: "Data",
-        error: 300,
-        data: null
-    })
+      });
     }
+
+    const requiredFields = ["FullName", "Email", "PhoneNumBer", "Description", "Status", "Package_id"];
+    const respondvalidate = validate.isValidRequest(req.body, requiredFields)
+    if (respondvalidate == false) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    if (!req.body.Package_id || !mongoose.Types.ObjectId.isValid(req.body.Package_id)) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+
     const NewObject = {
       FullName: req.body.FullName,
       Email: req.body.Email,
       Phone_number: req.body.PhoneNumBer,
       Status: req.body.Status,
       deleted: false,
+      id_fingerprint: req.body.id_fingerprint,
       Description: req.body.Description != null ? req.body.Description : null,
       createAt: helper.timenow().toString(),
       CreateBy: req.user.email,
@@ -250,23 +273,47 @@ module.exports.Post = async (req, res) => {
     }
 
     const data = new Customer(NewObject)
+
     const pack = await package.findOne({
       _id: req.body.Package_id,
-      deleted : false
+      deleted: false
     })
+
     if (!pack) {
-      return res.json( {
+      return res.json({
         status: false,
         type: "Data",
         error: 300,
         data: null
-    })
+      })
     }
-    data.totalDay = parseInt(data.totalDay) + parseInt(pack.Duration);
+
+    data.totalDay = data.totalDay + parseInt(pack.Duration);
     if (data.startday == null && data.Status != "3") {
       data.startday = Date.now()
     }
     await data.save()
+
+
+    const historyCTM = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: data._id,
+        action: "Thêm Khách Hàng",
+        type: "Khách Hàng",
+        detailtype: {
+          field_1 : req.body.FullName
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await historyCTM.save()
+
+
+
     const CTM_PKobject = {
       CTM_id: data._id,
       Package_id: req.body.Package_id,
@@ -275,9 +322,29 @@ module.exports.Post = async (req, res) => {
       updateAt: null,
       updateBy: null
     }
-    console.log(CTM_PKobject)
+
     const handle = new CTM_PK(CTM_PKobject)
     await handle.save()
+
+
+    const historyCTM_PK = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: pack.id,
+        action: "Thêm Gói Tập",
+        type: "Đăng Ký Gói Tập",
+        detailtype: {
+          field_1 : pack.Name,
+          field_2 : req.body.FullName
+        },
+        revenue: pack.Price,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await historyCTM_PK.save()
+
     return res.json({
       status: true,
       type: "Customer",
@@ -286,7 +353,121 @@ module.exports.Post = async (req, res) => {
     })
 
   } catch (error) {
-    console.log(error)
+    if (error.name == "MongoServerError") {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+    return res.json({
+      status: false,
+      type: "Customer",
+      error: 500,
+      data: null
+    })
+  }
+}
+
+module.exports.deleted = async (req, res) => {
+  try {
+    if (req.user.permission.includes("deleted_customer") == false && req.user.role != "admin") {
+      return res.json({
+        status: false,
+        type: "Auth",
+        error: 100,
+        data: null
+      })
+    }
+    const { id } = req.body
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+    const checkctmpk = await CTM_PK.findOne({
+      CTM_id: id,
+      deleted: false
+    })
+    if (checkctmpk) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+
+    }
+
+    const checkctmsv = await CTM_SV.findOne({
+      CTM_id: id,
+      deleted: false
+    })
+    if (checkctmsv) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+
+    const checkuser = await Customer.findOne({
+      _id: id,
+      deleted: false
+    })
+    if (!checkuser) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    const respond = await Customer.updateOne({
+      _id: id,
+      deleted: false
+    }, { $set: { deleted: true } })
+    if (respond.modifiedCount === 0) {
+      return res.json({
+        status: false,
+        type: "Data",
+        error: 300,
+        data: null
+      })
+    }
+
+    
+    const historyCTM = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: id,
+        action: "Xóa Khách Hàng",
+        type: "Khách Hàng",
+        detailtype: {
+          field_1 : checkuser.FullName
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await historyCTM.save()
+    
+    return res.json({
+      status: true,
+      type: "Customer",
+      error: null,
+      data: null
+    })
+  } catch (error) {
     return res.json({
       status: false,
       type: "Customer",
@@ -309,15 +490,15 @@ module.exports.changeStatus = async (req, res) => {
     const { changetype, type, arraycheck, date } = req.body
     const requiredFields = ["changetype", "type", "arraycheck"];
     const respondvalidate = validate.isValidRequest(req.body, requiredFields)
-    if(respondvalidate == false){
-      return res.json( {
+    if (respondvalidate == false) {
+      return res.json({
         status: false,
         type: "Data",
         error: 300,
         data: null
-    })
-   }
-   let respond = null
+      })
+    }
+    let respond = null
     if (type == "All") {
       if (changetype == "active") {
         const find = {
@@ -326,35 +507,53 @@ module.exports.changeStatus = async (req, res) => {
         if (date.length > 0) {
           find.date_reserve = date
         }
-         respond = await Customer.updateMany(find,
-          { $set: { Status: 1, date_reserve: null, startday: Date.now() } })
+        respond = await Customer.updateMany(find,
+          { $set: { Status: 1, date_reserve: null, startday: Date.now(), deleted: false } })
       } else {
-         respond = await Customer.updateMany({
+        respond = await Customer.updateMany({
           Status: "1"
-        }, { $set: { Status: 3, date_reserve: helper.YearNow(), startday: null } })
+        }, { $set: { Status: 3, date_reserve: helper.YearNow(), startday: null, deleted: false } })
       }
-      
     } else {
       if (changetype == "active") {
-         respond = await Customer.updateMany({
+        respond = await Customer.updateMany({
           _id: { $in: arraycheck },
           Status: "3"
-        }, { $set: { Status: 1, date_reserve: null, startday: Date.now() } })
+        }, { $set: { Status: 1, date_reserve: null, startday: Date.now(), deleted: false } })
       } else {
-         respond = await Customer.updateMany({
+        respond = await Customer.updateMany({
           _id: { $in: arraycheck },
           Status: "1"
-        }, { $set: { Status: 3, date_reserve: helper.YearNow(), startday: null } })
+        }, { $set: { Status: 3, date_reserve: helper.YearNow(), startday: null, deleted: false } })
       }
     }
     if (respond.modifiedCount === 0) {
-      return res.json( {
+      return res.json({
         status: false,
         type: "Data",
         error: 300,
         data: null
-    })
+      })
     }
+    
+    const historyCTM = new History(
+      {
+        authen_id: req.user.userId,
+        id_type: type == "All" ? "All" : arraycheck.join(","),
+        action: "Thay Đổi Trạng Thái",
+        type: "Khách Hàng",
+        detailtype: {
+          field_1 : type == "All" ? "All" : arraycheck.length,
+          field_2 : changetype
+        },
+        revenue: 0,
+        datesearch : helper.YearNow(),
+        createAt: helper.timenow(),
+        CreateBy: req.user.email,
+      }
+    )
+    await historyCTM.save()
+
     return res.json({
       status: true,
       type: "Customer",
@@ -371,3 +570,43 @@ module.exports.changeStatus = async (req, res) => {
     })
   }
 }
+
+
+module.exports.checkfingerprint = async (req, res) => {
+  try {
+    const zk = new ZKLib("192.168.1.201", 4370, 10000, 4000);
+    await zk.createSocket();
+    const log = await zk.getAttendances();
+
+    if (!log || !log.data || log.data.length === 0) {
+      await zk.disconnect();
+      return [];
+    }
+
+    await zk.disconnect();
+    const Data = await Customer.findOne({
+      id_fingerprint: log.data[log.data.length - 1].deviceUserId
+    })
+    if (Data == null) {
+      return res.json({
+        status: true,
+        type: "id",
+        error: null,
+        data: log.data[log.data.length - 1].deviceUserId
+      })
+    }
+    return res.json({
+      status: true,
+      type: "Customer",
+      error: null,
+      data: Data
+    })
+  } catch (error) {
+    return res.json({
+      status: false,
+      type: "Customer",
+      error: 500,
+      data: null
+    })
+  }
+}  
