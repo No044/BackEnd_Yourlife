@@ -14,16 +14,12 @@ const frontendUrl = process.env.FRONTEND_URL;
 console.log("frontendUrl", frontendUrl);
 
 app.use(express.json());
-const allowedOrigins = [frontendUrl];
+// const allowedOrigins = [frontendUrl];
 app.use(
   cors({
-    origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
     credentials: true,
   })
 );
