@@ -2,6 +2,7 @@ const CTM_SV = require("../model/CTM_SV_Y.model")
 const Service = require("../model/Service_Y.model")
 const CTM = require("../model/Customer_Y.model")
 const mongoose = require("mongoose");
+const History = require("../model/History_Y.model")
 const helper = require("../../../helper/helper")
 module.exports.GetALL = async (req, res) => {
     try {
@@ -125,6 +126,7 @@ module.exports.Post = async (req, res) => {
                 data: null
             })
         }
+
         const newobject = {
             CTM_id: id_user,
             Service_id: id_ser,
@@ -134,6 +136,7 @@ module.exports.Post = async (req, res) => {
             updateAt: null,
             updateBy: null
         }
+
         if (status == 1) {
             newobject.updateAt = helper.timenow()
             newobject.updateBy = req.user.email
@@ -143,8 +146,8 @@ module.exports.Post = async (req, res) => {
             _id: id_ser,
             deleted: false,
             status : 1
-
         })
+
         if (!service) {
             return res.json({
                 status: false,
@@ -153,6 +156,22 @@ module.exports.Post = async (req, res) => {
                 data: null
             })
         }
+
+        const custormer = await CTM.findOne({
+            _id : id_user,
+            deleted : false,
+
+        })
+        
+        if(!custormer){
+            return res.json({
+                status: false,
+                type: "CTM_SV",
+                error: 300,
+                data: null
+            })
+        }
+       
         if (service.Quatity - service.sold <= 0) {
             service.status = 2
             await service.save()
@@ -163,14 +182,34 @@ module.exports.Post = async (req, res) => {
                 data: null
             })
         }
+
         service.sold = service.sold + 1
         if (service.Quatity - service.sold == 0) {
             service.status = 2
         }
-
         await service.save()
+        
         const handle = new CTM_SV(newobject)
         await handle.save()
+
+        const history = new History(
+            {
+              authen_id: req.user.userId,
+              id_type: id_ser,
+              action: "Thêm Dịch Vụ",
+              type: "Dịch Vụ Khách Hàng",
+              detailtype: {
+               field_1 : service.Name,
+               field_2 : custormer.FullName
+              },
+              revenue: status == 1 ? service.Price : 0,
+              datesearch : helper.YearNow(),
+              createAt: helper.timenow(),
+              CreateBy: req.user.email,
+            }
+          )
+          await history.save()
+      
         return res.json({
             status: true,
             type: "CTM_SV",
@@ -191,6 +230,7 @@ module.exports.Post = async (req, res) => {
 
 module.exports.changestatus = async (req, res) => {
     try {
+
         if (req.user.permission.includes("edit_svctm") == false && req.user.role != "admin") {
             return res.json({
                 status: false,
@@ -199,7 +239,19 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
+
         const { array_id, type } = req.body
+
+        if(type != "pay" &&  type != "unpay"){
+            return res.json({
+                status: false,
+                type: "Data",
+                error: 300,
+                data: null
+            })
+        }
+
+
         const { id } = req.params
         const allValid = array_id.every(id => mongoose.Types.ObjectId.isValid(id));
         if (!allValid) {
@@ -210,8 +262,9 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
+        
         const Respond = await CTM_SV.updateMany(
-            { _id: { $in: array_id } },
+            { _id: { $in: array_id }, status : 2},
             { 
                 $set: { 
                     status: type == "pay" ? 1 : 3, 
@@ -221,7 +274,7 @@ module.exports.changestatus = async (req, res) => {
                 } 
             }
         );
-
+        
         if (Respond.modifiedCount === 0) {
             return res.json({
                 status: false,
@@ -230,6 +283,32 @@ module.exports.changestatus = async (req, res) => {
                 data: null
             })
         }
+
+        const Data_CTMSV = await CTM_SV.find({ _id: { $in: array_id } }).populate("CTM_id")
+        .populate("Service_id")
+        console.log(Data_CTMSV)
+        for(const item of Data_CTMSV){
+            const history = new History(
+                {
+                  authen_id: req.user.userId,
+                  id_type: array_id.join(","),
+                  type: "Dịch Vụ Khách Hàng",
+                  action: "Thanh Toán Dịch Vụ",
+                  detailtype: {
+                    field_1: item.CreateAt,
+                    field_2: item.CTM_id.FullName,
+                    field_3 : item.Service_id.Name,
+                    field_4 : type == "pay" ? "Đã Thanh Toán" : "Đã Hủy"
+                },
+                revenue: type == "pay" ? item.Service_id.Price : 0,
+                  datesearch : helper.YearNow(),
+                  createAt: helper.timenow(),
+                  CreateBy: req.user.email,
+                }
+              )
+              await history.save()
+        }
+
         if (type == "unpay") {
             const decrementValue = -array_id.length
             const Respond = await Service.updateOne(
@@ -237,6 +316,7 @@ module.exports.changestatus = async (req, res) => {
                 { $inc: { sold: decrementValue } }
             )
         }
+
         return res.json({
             status: true,
             type: "CTM_SV",
@@ -244,10 +324,11 @@ module.exports.changestatus = async (req, res) => {
             data: null
         })
     } catch (error) {
-    } return res.json({
-        status: false,
-        type: "CTM_SV",
-        error: 500,
-        data: null
-    })
+        return res.json({
+            status: false,
+            type: "CTM_SV",
+            error: 500,
+            data: null
+        })
+    } 
 }

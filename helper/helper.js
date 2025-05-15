@@ -8,7 +8,7 @@ module.exports.paginet = (start,limit,count) => {
     if(limit){
       pagination.limit = parseInt(limit)
     }
-    if(start && start <= Math.ceil(count / pagination.limit) ){
+    if(start && start <= Math.ceil(count / pagination.limit) && start > 0){
         pagination.start = parseInt(start)
     }
   

@@ -3,7 +3,7 @@ const rateLimit = require("express-rate-limit");
 const loginLimit = () => {
     return rateLimit({
         windowMs: 15 * 60 * 1000,
-        max: 50, 
+        max: 30, 
         keyGenerator: (req) => `${req.ip}-${req.headers["user-agent"]}`,
         message: {
             status: false,

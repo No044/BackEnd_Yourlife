@@ -5,5 +5,7 @@ router.get("/GetAll",controller.GetALL)
 router.post("/PostAll",controller.Post)
 router.patch("/changestatus",controller.changeStatus)
 router.patch("/patch",controller.patch)
+router.patch("/deleted",controller.deleted)
+
 router.get("/Getdetail/:id",controller.Getdetail)
 module.exports = router
