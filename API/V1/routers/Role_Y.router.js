@@ -4,6 +4,7 @@ const controller = require("../controller/Role_Y.controller")
 router.get("/Getall",controller.GetALL)
 router.get("/Getdetail/:id",controller.Getdetail)
 router.post("/Post",controller.Post)
+
 router.patch("/Patch",controller.patch)
 router.patch("/createpremission",controller.createrpremission)
 

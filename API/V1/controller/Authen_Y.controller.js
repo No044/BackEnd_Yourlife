@@ -52,7 +52,7 @@ module.exports.login = async (req, res) => {
             token: token
         }
         const responddeleted = await BlackList.deleteOne({
-            CTM_id  : user._id
+            CTM_id: user._id
         })
         const saveblacklist = new BlackList(objectBlack_list)
         await saveblacklist.save()
@@ -79,7 +79,7 @@ module.exports.login = async (req, res) => {
 
 };
 
-module.exports.adminlogout = async(req,res) => {
+module.exports.adminlogout = async (req, res) => {
     try {
         if (req.user.role != "admin") {
             return res.json({
@@ -90,7 +90,6 @@ module.exports.adminlogout = async(req,res) => {
             })
         }
         const { id } = req.body
-        console.log(req.body)
         if (!id || !mongoose.Types.ObjectId.isValid(id)) {
             return res.json({
                 status: false,
@@ -100,9 +99,9 @@ module.exports.adminlogout = async(req,res) => {
             })
         }
         const respond = await BlackList.updateOne({
-            CTM_id : id,
-            status : 1
-        }, { $set: { status : 2 } })
+            CTM_id: id,
+            status: 1
+        }, { $set: { status: 2 } })
 
         if (respond.modifiedCount === 0) {
             return res.json({
@@ -178,7 +177,7 @@ module.exports.register = async (req, res) => {
             })
         }
         const { email, password } = req.body;
-        const existingUser = await User.findOne({ Email: email });
+        const existingUser = await User.findOne({ Email: email, deleted: false });
         if (existingUser) {
             return res.json({
                 status: false,
@@ -252,8 +251,8 @@ module.exports.Getall = async (req, res) => {
             item.titlerole = datarole?.title;
 
             const datablacklist = await BlackList.findOne({
-                CTM_id : item._id,
-                status : 1
+                CTM_id: item._id,
+                status: 1
             })
             datablacklist ? item.online = true : item.online = false
         }
@@ -427,4 +426,56 @@ module.exports.changeStatus = async (req, res) => {
             data: null
         })
     }
+}
+
+module.exports.password = async (req, res) => {
+ try {
+    const { oldPassword, newPassword } = req.body
+    const respond = await User.findOne({
+        Email: req.user.email
+    })
+    if (!respond) {
+        return res.json({
+            status: false,
+            type: "Tài Khoản Không Tồn Tại",
+            error: 300,
+            data: null,
+            Area: "AuthenPassword"
+
+        })
+
+    }
+    const isMatch = await bcrypt.compare(oldPassword, respond.password);
+    if (!isMatch) {
+        return res.json({
+            status: false,
+            type: "Mật Khẩu Không Đúng",
+            error: 300,
+            data: null,
+            Area: "AuthenPassword"
+
+        })
+    }
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const respondupdate = await User.updateOne({
+        Email: req.user.email
+    }, { $set: { password: hashedPassword } })
+    return res.json({
+        status: true,
+        type: "Đổi Mật Khẩu Thành Công",
+        error: null,
+        data: null,
+        Area: "AuthenPassword"
+    })
+ } catch (error) {
+    console.log(error)
+    return res.json({
+        status: false,
+        type: "Đã Có Lỗi Hệ Thống Vui Lòng Liện Hệ Admin",
+        error: 500,
+        data: null,
+        Area: "AuthenPassword"
+    })
+ }
 }

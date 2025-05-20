@@ -10,7 +10,8 @@ router.patch("/deleted",Authorizes,controller.deleted)
 router.patch("/changestatus",Authorizes,controller.changeStatus)
 router.get("/authorizes",Authorizes,controller.Authorizes)
 router.post("/login",loglimit(),controller.login)
-router.post("/logout",controller.login)
+router.post("/logout",controller.logout)
 router.patch("/adminlogout",Authorizes,controller.adminlogout)
+router.patch("/password",Authorizes,controller.password)
 
 module.exports = router

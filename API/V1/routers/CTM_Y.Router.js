@@ -8,6 +8,7 @@ router.get("/Getdetail/:id",controller.GetDetail)
 router.patch("/changeStatus",controller.changeStatus)
 router.patch("/patch",controller.patch)
 router.patch("/deleted",controller.deleted)
-router.get("/checkfingerprint",caculator,controller.checkfingerprint)
+router.get("/checkfingerprint",controller.checkfingerprint)
+router.patch("/updatefinger",controller.updatefinger)
 
 module.exports = router

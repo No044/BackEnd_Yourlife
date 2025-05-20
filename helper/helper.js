@@ -1,4 +1,7 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const ENCRYPTION_KEY = crypto.createHash('sha256').update(String("my_secret_key")).digest('base64').substr(0, 32);
+const IV = crypto.randomBytes(16);
 
 module.exports.paginet = (start,limit,count) => {
     const pagination = {
@@ -110,3 +113,22 @@ module.exports.SendMail = async (email, subject, content) => {
       return { success: false, message: "Failed to send email!", error };
   }
 };
+
+module.exports.encrypt =(text) => {
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), IV);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return {
+      iv: IV.toString('hex'),
+      encryptedData: encrypted.toString('hex')
+    };
+  }
+
+
+  
+module.exports.decrypt = (encryptedData, ivHex) => {
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY), Buffer.from(ivHex, 'hex'));
+    let decrypted = decipher.update(Buffer.from(encryptedData, 'hex'));
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  }
